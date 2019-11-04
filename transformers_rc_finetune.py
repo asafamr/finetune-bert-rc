@@ -454,8 +454,9 @@ def finetune(data_dir: str, output_dir: str, do_train: bool = True, model_name: 
         eval_ds, _ = convert_examples_to_dataset(eval_examples, task_processor.get_labels(), max_seq_length,
                                                  tokenizer)
 
-        checkpoints = list(
-            c for c in sorted(glob.glob(output_dir + '/**/*.bin', recursive=True)))
+        # checkpoints = list(
+        #     c for c in sorted(glob.glob(output_dir + '/**/*.bin', recursive=True)))
+        checkpoints = [os.path.join(output_dir, f'best_dev_model.bin')]
         all_results = []
         for checkpoint in checkpoints:
             checkpoint_saved = torch.load(checkpoint)
