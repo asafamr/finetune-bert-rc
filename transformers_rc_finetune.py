@@ -293,7 +293,7 @@ def finetune(data_dir: str, output_dir: str, do_train: bool = True, model_name: 
         device = 'cuda:0'
     device = torch.device(device)
 
-    logger.warning("Device: %s, n_gpu: %s,16-bits training: %s",
+    logger.info("Device: %s, n_gpu: %s,16-bits training: %s",
                    device, n_gpu, fp16)
 
     set_seed(seed)
