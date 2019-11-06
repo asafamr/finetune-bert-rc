@@ -282,9 +282,9 @@ def finetune(data_dir: str, output_dir: str, do_train: bool = True, model_name: 
     """
     all_params = dict(locals())
 
-    logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
-                        datefmt='%m/%d/%Y %H:%M:%S',
-                        level=logging.DEBUG if verbose_logging else logging.INFO)
+    # logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message)s',
+    #                     datefmt='%m/%d/%Y %H:%M:%S',
+    #                     level=logging.DEBUG if verbose_logging else logging.INFO)
 
     device = 'cpu'
     n_gpu = 0
