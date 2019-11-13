@@ -3,10 +3,12 @@ from datautils import DataProcessor, InputExample
 from transformers_rc_finetune import finetune
 from multiprocessing import Process
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+import multiprocessing
 import re
 import sys
 import logging
 import pandas as pd
+import time, math
 
 
 class TextProcessor(DataProcessor):
@@ -82,9 +84,24 @@ class TextProcessor(DataProcessor):
                 'yes_relation']
 
 
+def set_verbose(verbose):
+    # remove current loggers
+    for handler in logging.root.handlers[:]:
+        logging.root.removeHandler(handler)
+    if verbose:
+        logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
+    else:
+        sys.stdout = open('/dev/null', 'w')
+        sys.stderr = open('/dev/null', 'w')
+
+
 def train_roberta(model_name, positive_train, negative_train, positive_dev, negative_dev, gpu=0, verbose=False):
     print('Training(this should take a couple of minutes)...')
+    start_time = time.time()
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
+
+    for x in [positive_train, negative_train, positive_dev, negative_dev]:
+        TextProcessor.parse_text_to_samples(x)  # this will throw now with parsing error
 
     # these control over/under fitting
     max_num_epochs = 200
@@ -92,12 +109,13 @@ def train_roberta(model_name, positive_train, negative_train, positive_dev, nega
     eval_dev_every_k_batches = 100
 
     # these are mainly for controlling cuda mem
-    batch_size = 2
+    batch_size = 3
     accumelate_k_batches = 4
     # could also speed up things on gce
     use_fp16 = True
 
-    def run():
+    def run(verbose):
+        set_verbose(verbose)
         finetune(data_dir='.', output_dir=model_name, do_train=True, task='boolrc', nopbar=True,
                  overwrite_output_dir=True,
                  eval_test=False, score_bool_probs=False,
@@ -105,17 +123,27 @@ def train_roberta(model_name, positive_train, negative_train, positive_dev, nega
                  stop_train_low_score_k=stop_when_no_improvements_on_dev_for_k_evals, fp16=use_fp16,
                  num_train_epochs=max_num_epochs, per_gpu_batch_size=batch_size,
                  gradient_accumulation_steps=accumelate_k_batches,
-
                  task_train_pos_text=positive_train,
                  task_train_neg_text=negative_train,
                  task_dev_pos_text=positive_dev,
                  task_dev_neg_text=negative_dev,
-
                  )
 
-    p = Process(target=run)
+    p = Process(target=run, kwargs=dict(verbose=verbose))
     p.start()
-    p.join()
+    while True:
+        p.join(timeout=5)
+        if not p.is_alive():
+            print()
+            break
+        if not verbose:
+            print('.', end=' ')
+
+    if p.exitcode != 0:
+        print('FAILED. Total time: %d seconds' % (math.ceil(time.time() - start_time)))
+    else:
+        print('Done. Total time: %d seconds' % (math.ceil(time.time() - start_time)))
+    return p.exitcode
 
 
 def _print_report(test_pos_text, test_neg_text, predicted):
@@ -169,11 +197,44 @@ def _print_report(test_pos_text, test_neg_text, predicted):
     print('-' * 10)
 
 
+def show_results_jup(results):
+    import pandas as pd
+    from IPython.display import display
+    import qgrid
+    from sklearn.metrics import accuracy_score,precision_score, recall_score, f1_score
+
+    df = pd.DataFrame(dict((x, results[x]) for x in results)).set_index('sentence')
+    col_options = {
+        'width': 80,
+    }
+    col_defs = {
+        'sentence': {
+            'width': 1000,
+        }
+    }
+    for x in 'label prediction'.split():
+        df[x] = df[x].astype('bool')
+
+    df['correct'] = (df['label'] == df['prediction'])
+    q=qgrid.show_grid(df, row_edit_callback=lambda x: False, column_options=col_options,
+                    column_definitions=col_defs, show_toolbar=False, grid_options={'forceFitColumns': True})
+    for x in precision_score, accuracy_score, recall_score, f1_score:
+        score = x(df.label.values, df.prediction.values)
+        print('%s: %.1f%%' % (x.__name__.replace('_score', '').capitalize().ljust(15), score * 100))
+    display(q)
+
 def eval_roberta(model_name, positive_test, negative_test, gpu=0, verbose=False):
+    print('Evaluating...')
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
 
+    for x in [positive_test, negative_test]:
+        TextProcessor.parse_text_to_samples(x)  # this will throw now with parsing error
 
-    def run():
+    manager = multiprocessing.Manager()
+    return_dict = manager.dict()
+
+    def run(verbose, return_dict):
+        set_verbose(verbose)
         finetune(data_dir='..', output_dir=model_name, do_train=False, task='boolrc', nopbar=True, eval_test=True,
                  score_bool_probs=False,
 
@@ -181,11 +242,28 @@ def eval_roberta(model_name, positive_test, negative_test, gpu=0, verbose=False)
                  task_test_neg_text=negative_test,
 
                  )
-        _print_report(positive_test, negative_test, TextProcessor.last_prediction)
+        rows_pos = [x.strip() for x in positive_test.split('\n') if x.strip() and x.strip()[1] != '#']
+        rows_neg = [x.strip() for x in negative_test.split('\n') if x.strip() and x.strip()[1] != '#']
+        return_dict['sentence'] = rows_pos + rows_neg
+        return_dict['label'] = [1] * len(rows_pos) + [0] * len(rows_neg)
+        return_dict['prediction'] = TextProcessor.last_prediction
+        # _print_report(positive_test, negative_test, TextProcessor.last_prediction)
 
-    p = Process(target=run)
+    p = Process(target=run, kwargs=dict(verbose=verbose, return_dict=return_dict))
     p.start()
-    p.join()
+    while True:
+        p.join(timeout=5)
+        if not p.is_alive():
+            print()
+            break
+        if not verbose:
+            print('.', end=' ')
+
+    if p.exitcode != 0:
+        print('FAILED')
+    else:
+        print('Done.')
+    return p.exitcode, return_dict
 
 
 if __name__ == '__main__':
@@ -202,7 +280,7 @@ Five years later [s Waze], that was established by [o Mark] , was disbanded.
 [o Dan] established Microsoft Corporation but not [s Mazda] .
 [o Laura], that I found funny,worked at the [s company] .
 
-''',verbose=True)
+''', verbose=True)
 #     train_roberta('test_123',
 #                   '''
 # [o John] founded [s Unilever].
