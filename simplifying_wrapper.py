@@ -69,7 +69,7 @@ class TextProcessor(DataProcessor):
     def score(self, predicted, gold_labels):
         TextProcessor.last_prediction = predicted
         acc = accuracy_score(gold_labels, predicted)
-        return {'agg': dict(auc=acc), 'main': acc}
+        return {'agg': dict(acc=acc), 'main': acc}
 
     # this is used later - taskname param
     @staticmethod
@@ -96,11 +96,6 @@ def train_roberta(model_name, positive_train, negative_train, positive_dev, nega
     accumelate_k_batches = 4
     # could also speed up things on gce
     use_fp16 = False
-
-    if verbose:
-        logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-    else:
-        logging.basicConfig(level=logging.WARN, stream=sys.stdout)
 
     def run():
         finetune(data_dir='.', output_dir=model_name, do_train=True, task='boolrc', nopbar=True,
@@ -177,10 +172,6 @@ def _print_report(test_pos_text, test_neg_text, predicted):
 def eval_roberta(model_name, positive_test, negative_test, gpu=0, verbose=False):
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpu)
 
-    if verbose:
-        logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-    else:
-        logging.basicConfig(level=logging.WARN, stream=sys.stdout)
 
     def run():
         finetune(data_dir='..', output_dir=model_name, do_train=False, task='boolrc', nopbar=True, eval_test=True,
