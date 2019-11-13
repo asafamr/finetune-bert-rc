@@ -218,7 +218,7 @@ def show_results_jup(results):
     df['correct'] = (df['label'] == df['prediction'])
     q=qgrid.show_grid(df, row_edit_callback=lambda x: False, column_options=col_options,
                     column_definitions=col_defs, show_toolbar=False, grid_options={'forceFitColumns': True})
-    for x in precision_score, accuracy_score, recall_score, f1_score:
+    for x in accuracy_score,precision_score, recall_score, f1_score:
         score = x(df.label.values, df.prediction.values)
         print('%s: %.1f%%' % (x.__name__.replace('_score', '').capitalize().ljust(15), score * 100))
     display(q)
