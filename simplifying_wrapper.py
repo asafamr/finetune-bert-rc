@@ -95,7 +95,7 @@ def train_roberta(model_name, positive_train, negative_train, positive_dev, nega
     batch_size = 2
     accumelate_k_batches = 4
     # could also speed up things on gce
-    use_fp16 = False
+    use_fp16 = True
 
     def run():
         finetune(data_dir='.', output_dir=model_name, do_train=True, task='boolrc', nopbar=True,
